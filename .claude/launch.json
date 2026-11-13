@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "nokho-flow-web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd apps/nokho_flow && flutter run --release -d web-server --web-hostname localhost --web-port 8123"
+      ],
+      "port": 8123
+    }
+  ]
+}

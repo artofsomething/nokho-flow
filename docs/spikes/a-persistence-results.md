@@ -30,7 +30,36 @@ Notes:
 - A single small write transaction costs about 5 ms. Per-keystroke autosave should be debounced; dragging nodes on the canvas must not write on every frame.
 - The collection watcher fires once per transaction (102 = 1 bulk write + 100 single writes + 1 delete), which is the granularity the UI will get.
 
+## Step 5 — Web (Chrome) (2026-11-13): FAIL, does not compile
+
+`flutter build web` fails for the spike app. The test never ran in Chrome.
+
+**JavaScript build (dart2js):**
+
+```
+lib/request_record.g.dart:18:8:
+Error: The integer literal 460796853305647030 can't be represented exactly in JavaScript.
+  id: -460796853305647030,
+```
+
+Five such errors: the generated schema, index and embedded-object IDs are 64-bit integers, which JavaScript numbers cannot hold.
+
+**WebAssembly build:** the dry run reports `dart:ffi unsupported` for every file under `package:isar_community/src/native/`, so a wasm build is not an option either.
+
+**Why:** Isar Community 3.4.1 has no working web implementation.
+- Its changelog says of the 3.0 line: "This version does not support the web target yet. It will be back in the next version."
+- The files under `lib/src/web/` are stubs with the implementation commented out.
+- pub.dev lists 3.4.1 (2026-10-13) as the latest version; there is no 4.x release or pre-release of `isar_community` to try.
+
+**Consequence:** Isar Community cannot be the storage backend for Web Lite. Options to weigh in ADR 0001:
+1. Isar on native + a different backend on web behind the same repository interfaces (two implementations to keep in step).
+2. One backend that runs everywhere, e.g. SQLite via Drift (native + wasm on web).
+3. Isar on native, and Web Lite without persistence beyond import/export (weakest).
+
 ## Open issue — macOS release/profile builds fail (not caused by Isar)
+
+Diagnosed 2026-11-13: Flutter 3.44.6 runs `lipo <file> -verify_arch arm64 x86_64`; the `lipo` in Xcode 27.2 rejects two architectures in one call ("requires exactly one input file") although each passes alone. Flutter 3.47.9 and 3.50.0 verify one architecture at a time. Fix: upgrade the Flutter SDK (deferred by decision on 2026-11-13).
+
 
 `flutter build macos --release` and `--profile` fail with:
 

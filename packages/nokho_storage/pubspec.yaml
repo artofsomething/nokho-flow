@@ -1,0 +1,16 @@
+name: nokho_storage
+description: Repository interfaces and their persistence implementation. Backend pending Spike A.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  nokho_core:
+    path: ../../packages/nokho_core
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.6

@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.6
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed .
+      - run: flutter analyze
+      - name: Dart package tests
+        run: |
+          for p in packages/nokho_core packages/nokho_engine; do
+            (cd "$p" && dart test)
+          done
+      - name: Flutter tests
+        run: |
+          for p in packages/nokho_ui apps/nokho_flow; do
+            (cd "$p" && flutter test)
+          done

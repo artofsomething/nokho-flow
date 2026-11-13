@@ -1,0 +1,16 @@
+name: nokho_importers
+description: Importers for cURL, Postman, OpenAPI and HAR.
+version: 0.1.0
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  nokho_core:
+    path: ../../packages/nokho_core
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.6

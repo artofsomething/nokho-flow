@@ -1,0 +1,18 @@
+name: nokho_flow_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+
+workspace:
+  - apps/nokho_flow
+  - packages/nokho_core
+  - packages/nokho_http
+  - packages/nokho_engine
+  - packages/nokho_script
+  - packages/nokho_storage
+  - packages/nokho_importers
+  - packages/nokho_codegen_snippets
+  - packages/nokho_flow_canvas
+  - packages/nokho_ui
+  - tools/nokho_cli

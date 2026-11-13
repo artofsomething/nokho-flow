@@ -1,0 +1,39 @@
+name: nokho_flow
+description: "API testing client with a visual flow builder."
+publish_to: none
+version: 0.1.0+1
+resolution: workspace
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  nokho_core:
+    path: ../../packages/nokho_core
+  nokho_http:
+    path: ../../packages/nokho_http
+  nokho_engine:
+    path: ../../packages/nokho_engine
+  nokho_script:
+    path: ../../packages/nokho_script
+  nokho_storage:
+    path: ../../packages/nokho_storage
+  nokho_importers:
+    path: ../../packages/nokho_importers
+  nokho_codegen_snippets:
+    path: ../../packages/nokho_codegen_snippets
+  nokho_flow_canvas:
+    path: ../../packages/nokho_flow_canvas
+  nokho_ui:
+    path: ../../packages/nokho_ui
+  flutter_riverpod: ^3.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

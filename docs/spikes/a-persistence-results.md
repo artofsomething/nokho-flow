@@ -56,6 +56,8 @@ Five such errors: the generated schema, index and embedded-object IDs are 64-bit
 2. One backend that runs everywhere, e.g. SQLite via Drift (native + wasm on web).
 3. Isar on native, and Web Lite without persistence beyond import/export (weakest).
 
+**Decision (2026-11-13): option 3.** Keep Isar Community for native. Web Lite starts with in-memory repositories and import/export only; saved storage on web is deferred. Recorded in PLAN.md §3.4.1 and §4.1. A Drift comparison was considered and not run.
+
 ## Open issue — macOS release/profile builds fail (not caused by Isar)
 
 Diagnosed 2026-11-13: Flutter 3.44.6 runs `lipo <file> -verify_arch arm64 x86_64`; the `lipo` in Xcode 27.2 rejects two architectures in one call ("requires exactly one input file") although each passes alone. Flutter 3.47.9 and 3.50.0 verify one architecture at a time. Fix: upgrade the Flutter SDK (deferred by decision on 2026-11-13).

@@ -2,9 +2,9 @@
 
 > API testing client (Postman-like) with a **visual flow builder**: chain requests on a graph, extract values from responses, and drive the next request automatically.
 
-- **Status:** Planning (pre-code)
+- **Status:** Phase 0 (scaffolded; spikes in progress)
 - **Platforms:** macOS, Windows, Linux, iOS, Android, Web
-- **Stack:** Flutter, Riverpod, Isar Community
+- **Stack:** Flutter, Riverpod, Isar Community (native only; web keeps data in memory, see §4.1)
 - **Last updated:** 2026-11-13
 
 ---
@@ -289,7 +289,7 @@ nokho-flow/
 │   ├── nokho_engine/              # flow graph model, scheduler, executor, extractors, assertions (pure Dart)
 │   ├── nokho_script/              # ScriptRuntime impls (QuickJS FFI, JavaScriptCore, web Worker) + nk.* bridge + JS prelude
 │   ├── nokho_http/                # HttpAdapter interface + dio/native/web impls
-│   ├── nokho_storage/             # repository interfaces + Isar impl + migrations + secure storage
+│   ├── nokho_storage/             # repository interfaces + Isar impl (native) + in-memory impl (web, tests) + migrations + secure storage
 │   ├── nokho_importers/           # curl, postman, openapi, har
 │   ├── nokho_codegen_snippets/    # request → code snippet generators
 │   ├── nokho_flow_canvas/         # node-graph canvas widget (CustomPainter, no app deps)
@@ -307,8 +307,8 @@ Rule: `nokho_engine` and `nokho_core` must stay **pure Dart** so the CLI, isolat
 |---|---|---|
 | State | `flutter_riverpod`, `riverpod_annotation` + `riverpod_generator` | Use `AsyncNotifier` for DB-backed state |
 | Immutability | `freezed`, `json_serializable` | |
-| DB | `isar_community` (+ `isar_community_flutter_libs`) | Original `isar` is unmaintained; confirm web support (see Risks) |
-| Secrets | `flutter_secure_storage` | Web fallback: WebCrypto-encrypted IndexedDB w/ user passphrase |
+| DB | `isar_community` (+ `isar_community_flutter_libs`) on native; in-memory repositories on web | Original `isar` is unmaintained. `isar_community` 3.4.1 does **not** compile for web (Spike A, step 5), so it must never be imported in web builds — see §3.4.1 |
+| Secrets | `flutter_secure_storage` | Web: session-only (in memory) |
 | HTTP | `dio` (+ native adapters) | Need per-platform adapters, cookie jar, cancel tokens |
 | Routing | `go_router` | Deep links to flow/request |
 | JSONPath | `json_path` / `petitparser`-based | Must support filters & recursive descent |
@@ -350,6 +350,19 @@ Design notes:
 - Graph stored **normalized** (nodes + edges) for efficient partial updates; exportable as a single JSON document.
 - Large bodies out of main collections; cap & auto-prune history (count + total size + age).
 - Schema versioning + migration runner from day 1 (Isar has no automatic migrations beyond field add; plan explicit migration steps).
+
+### 3.4.1 Storage per platform (decided 2026-11-13)
+
+| Platform | Repository implementation | Data survives restart |
+|---|---|---|
+| macOS, Windows, Linux, iOS, Android | Isar Community | Yes |
+| Web Lite | In-memory | No — import/export only |
+
+- The app depends only on repository interfaces (`RequestRepository`, `FlowRepository`, …) defined in `nokho_storage` with **no Isar types in their signatures**: plain entities from `nokho_core`, `Stream`s for watching.
+- The Isar implementation and its generated schemas live behind a **conditional import** (`dart.library.io`), so web builds never compile Isar code. The generated 64-bit schema IDs break `dart2js`, and Isar's native bindings use `dart:ffi`.
+- The in-memory implementation is the web backend and also the fake used in unit and widget tests, so it is exercised constantly. Both implementations run the same repository contract test suite.
+- Web workflow: start empty (or from the sample workspace) → import a `.nokho.json` → work → export. Details in §4.1.
+- Possible later step, without touching the rest of the app: persist the web workspace as one JSON document in browser storage, reusing the export format.
 
 ### 3.5 Flow engine design
 
@@ -424,7 +437,7 @@ abstract class HttpAdapter {
 ### 3.7 Riverpod conventions
 - Feature-first folders: `features/requests`, `features/flows`, `features/environments`, `features/history`, `features/settings`.
 - Repositories exposed via providers (overridable in tests); UI never touches Isar directly.
-- Isar `watch()` → `StreamProvider` for reactive lists.
+- Repository `watch…()` streams → `StreamProvider` for reactive lists (Isar `watch()` on native, a broadcast stream in the in-memory implementation).
 - Editor state (draft) separate from persisted state; explicit Save, with "unsaved changes" indicator and autosave option.
 - Canvas state: separate `FlowEditorController` (selection, viewport, drag, undo stack) from `FlowDef` persistence; debounce persistence of position changes.
 - Run state: `flowRunProvider.family(flowId)` consuming engine event stream.
@@ -438,7 +451,7 @@ abstract class HttpAdapter {
 |---|---|
 | **macOS / Windows / Linux** | First-class target; full HTTP capability; multi-window; tray; keyboard shortcuts; sandbox entitlements (macOS: `network.client`, file access; localhost server entitlement for agent/webhook). |
 | **iOS / Android** | Touch-first UX; single-pane navigation; flow editor w/ tap-to-connect mode; limited background execution (run while foreground; optional foreground service on Android for long flows); share-sheet import of cURL/files; ATS on iOS requires exception config for plain `http://` & local network permission prompt for LAN APIs; Android `usesCleartextTraffic` / network security config for dev. |
-| **Web (Lite — decided 2026-11-13)** | Hosted PWA shipping as a **lite version first**; no Nokho Agent/relay until post-1.0. See §4.1 for exact scope. Storage via IndexedDB; verify Isar web viability; large payload memory limits. |
+| **Web (Lite — decided 2026-11-13)** | Hosted PWA shipping as a **lite version first**; no Nokho Agent/relay until post-1.0. See §4.1 for exact scope. **No saved storage at first**: data lives in memory and moves in and out by import/export (§3.4.1); large payload memory limits. |
 
 ### 4.1 Web Lite scope
 
@@ -457,14 +470,19 @@ The browser sends requests directly with `fetch`, so only **CORS-enabled APIs** 
 - Manual redirect control and redirect-chain viewer; timing breakdown.
 - Non-standard methods rejected by `fetch` (CONNECT, TRACE).
 - Webhook Wait node, scheduled/background runs, CLI.
-- OS-keychain secret storage → secrets are session-only unless the user sets a passphrase (WebCrypto-encrypted).
+- **Saved storage.** Collections, environments, flows, history and run reports are kept in memory and are gone after a reload or tab close. The user imports a `.nokho.json` to start and exports to keep changes.
+- Secrets are session-only (in memory) and are never written to the export unless the user opts in.
 
 **Required UX**
 - A persistent "Web Lite" badge with a link to what is limited and a prompt to get the desktop app.
 - Failed requests that look like CORS/mixed-content blocks show a specific message, not a generic network error.
 - Flow validation flags nodes that use web-unsupported options before a run.
 
-**Later (Phase 5):** optional Nokho Agent/relay to lift these limits on web.
+- An "unsaved changes" indicator with a one-click **Export workspace**, and a browser leave-page warning when there are unexported changes.
+- Start screen offers: import a file, open the sample workspace, or start empty. Drag-and-drop of a `.nokho.json` onto the page imports it.
+- History and run reports are capped more tightly than on native (memory only).
+
+**Later (Phase 5):** saved storage on web (workspace JSON in browser storage, or a web-capable database), and the optional Nokho Agent/relay to lift the network limits.
 
 **Adaptive UI breakpoints:** <600 compact (mobile), 600–1100 medium (tablet), >1100 expanded (desktop). Canvas and request editor are the two screens needing bespoke mobile layouts.
 
@@ -583,7 +601,10 @@ The browser sends requests directly with `fetch`, so only **CORS-enabled APIs** 
 - Export safety: secrets stripped by default; confirm dialog when including; check output doesn't include history/cookies unless chosen.
 - Secure storage unavailable (Linux without keyring, web) → fallback with explicit user passphrase or in-memory-only, never silent plaintext.
 - Backup restore across platforms (path separators, file refs) → file attachments stored as relative/embedded.
-- Web storage eviction by the browser (Safari ITP 7-day, private mode) → warn, offer persistent storage request + export reminders.
+- Web (in-memory): accidental reload, tab crash, browser update or the OS discarding a background tab loses everything since the last export → leave-page warning, visible unsaved indicator, export reminders after N changes. The leave-page warning cannot fire on a crash, so say plainly on the start screen that web does not save.
+- Web: importing a second file while unexported changes exist → ask to merge, replace or cancel; exporting a large workspace (many MB of history) → exclude history/run reports by default.
+- Web → native hand-off: a workspace exported from web must import cleanly into the Isar-backed app and back (round-trip test in CI).
+- If web later gains browser storage: eviction by the browser (Safari ITP 7-day, private mode) → warn, request persistent storage, keep export reminders.
 
 ### 5.7 Security & abuse
 - Imported content containing malicious scripts/URLs → never auto-execute; show a trust prompt when opening shared workspaces.
@@ -631,7 +652,7 @@ The browser sends requests directly with `fetch`, so only **CORS-enabled APIs** 
 ### Phase 0 — Foundations & Spikes (2–3 weeks)
 Goal: kill the biggest risks before building features.
 - [ ] Repo, melos workspace, CI (analyze, test, build matrix), flavors (dev/prod), lints.
-- [ ] **Spike A — Isar Community on all 6 platforms** incl. web; decide persistence abstraction & fallback (Drift/sqlite3 WASM, IndexedDB).
+- [ ] **Spike A — Isar Community on native platforms.** macOS passed; web failed to compile, which led to the §3.4.1 decision. Remaining: Android, iOS, isolates + large blob, schema change, ADR 0001. Results in `docs/spikes/a-persistence-results.md`.
 - [ ] **Spike B — Canvas:** prototype node graph with 200 nodes (pan/zoom/drag/connect) on desktop + phone; choose custom vs package.
 - [ ] **Spike C — HTTP adapters:** native full-control vs web `fetch` restrictions; define the `capabilities` matrix and CORS/mixed-content error detection for Web Lite.
 - [ ] **Spike D — JSON editor/viewer perf** with 10–50 MB payloads.
@@ -645,7 +666,8 @@ Goal: kill the biggest risks before building features.
 - Collections/folders, environments + variables, history, tabs.
 - cURL import/export, native JSON export/import.
 - Engine v0: single send via the same engine API.
-- Desktop + Android + iOS builds; Web Lite build (direct `fetch`, capability-gated UI, §4.1).
+- Desktop + Android + iOS builds; Web Lite build (direct `fetch`, capability-gated UI, in-memory repositories with import/export, §4.1).
+- Repository interfaces with Isar and in-memory implementations passing one shared contract test suite.
 - **Exit criteria:** daily-usable for basic API testing; 0 data-loss bugs.
 
 ### Phase 2 — Flow Builder Alpha (6–8 weeks)
@@ -673,7 +695,7 @@ Goal: kill the biggest risks before building features.
 - Beta program, feedback loop, bug bash.
 
 ### Phase 5 — Post-1.0 (rolling)
-Sub-flows, flow versioning, scheduler & headless agent, Nokho Agent/relay for full-featured web, WebSocket/SSE/gRPC, wider Postman script compatibility (legacy syntax, more bundled libraries), mock server, cloud sync (E2E), team workspaces, Git-friendly folder format, plugin API.
+Sub-flows, flow versioning, scheduler & headless agent, saved storage on web, Nokho Agent/relay for full-featured web, WebSocket/SSE/gRPC, wider Postman script compatibility (legacy syntax, more bundled libraries), mock server, cloud sync (E2E), team workspaces, Git-friendly folder format, plugin API.
 
 ---
 
@@ -681,7 +703,7 @@ Sub-flows, flow versioning, scheduler & headless agent, Nokho Agent/relay for fu
 
 - **Unit:** extractors, expression evaluator (property-based/fuzz), variable resolver, scheduler (ready-set, dead-path), importers (golden corpora from real Postman/OpenAPI files).
 - **Engine integration:** local `shelf` test server exposing scripted endpoints (delays, redirects, 5xx, flaky, huge bodies, malformed JSON, cookie setting, auth flows) — the same server doubles as the in-app demo API.
-- **Repository tests:** Isar in-memory/temp dir, migration tests (N-1 → N fixtures committed).
+- **Repository tests:** one contract suite run against both the Isar implementation (temp dir) and the in-memory implementation; migration tests (N-1 → N fixtures committed); web ↔ native export/import round-trip.
 - **Widget/golden:** request editor, response viewer, canvas nodes in light/dark, text-scale 1.0/2.0, RTL.
 - **Canvas interaction tests:** gesture simulation (drag/connect/zoom), perf benchmarks via `integration_test` + timeline summaries.
 - **E2E:** desktop (integration_test / `patrol`), mobile device farm smoke tests, web Playwright against the PWA + agent.
@@ -695,7 +717,9 @@ Sub-flows, flow versioning, scheduler & headless agent, Nokho Agent/relay for fu
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| **Isar Community web support / long-term maintenance** | Persistence blocked on web | Phase-0 spike; hide behind repository interfaces so Drift/sqlite can replace it without touching domain/UI |
+| **Isar Community has no web support** (confirmed in Spike A) | Web cannot save data | Accepted: web is in-memory with import/export (§3.4.1); saved web storage deferred to Phase 5 |
+| **Web users lose work** (reload, crash, closed tab) | Frustration, lost trust | Plain "web does not save" notice, unsaved indicator, leave-page warning, export reminders |
+| **Isar Community long-term maintenance** | Native persistence stranded on an unmaintained library | Repository interfaces carry no Isar types, so Drift/SQLite can replace it without touching domain/UI; contract test suite makes a swap checkable |
 | **Web CORS limits which APIs are reachable** | Web users hit blocked requests | Accepted: web ships as Lite (§4.1) with clear capability UI and CORS-specific errors; agent/relay deferred to Phase 5 |
 | **Canvas performance/UX on mobile** | Poor flow editing | Early spike; simplified mobile editing mode (list + connect sheet); virtualization |
 | **Scope creep (Postman parity)** | Never ships | Strict phase gates; P0/P1/P2 tags; focus on flow differentiator |

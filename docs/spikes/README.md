@@ -3,7 +3,7 @@
 Each spike is throwaway code on its own branch (`spike/a-persistence`, ...). The output is an ADR in [../adr](../adr), not production code.
 
 ## A — Persistence on all six platforms
-- **Question:** Does Isar Community work on macOS, Windows, Linux, iOS, Android and web, including from a background isolate?
+- **Question:** Does Isar Community work on the native platforms (macOS, Windows, Linux, iOS, Android), including from a background isolate? Web was tested and does not compile; web uses in-memory storage instead.
 - **Do:** Store and watch 10k request records plus a 20 MB blob; run one schema change; open the DB from two isolates.
 - **Done when:** Go/no-go per platform, with a fallback named if any platform fails. → ADR 0001
 

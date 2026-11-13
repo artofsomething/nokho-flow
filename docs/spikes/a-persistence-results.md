@@ -105,6 +105,45 @@ Findings:
 4. The 336 ms gap on the phone during the first isolate write is unexplained. It was the first operation after launch, in a debug build, so start-up work may be included. Not investigated.
 5. The database file grew to about 42 MB for 20 MB of live blob data (the truncated 4 MB object and freed pages are included). Deleting blobs will not shrink the file by itself; compaction behaviour was not tested.
 
+## Schema change with old data (2026-11-13)
+
+Test: `spikes/isar_spike/mig_versions/` holds two versions of a `MigRecord` collection; `sh mig_versions/use.sh <1|2>` switches the active one. Run with `--dart-define=SPIKE_TEST=mig`. Four phases on macOS against one database file: seed 1,000 rows with v1 → open with v2 → open with v1 again (an older app version) → open with v2 again. Isar raised no error in any phase.
+
+### Upgrade (v1 data opened by v2)
+
+| Change made in v2 | What happened to the 1,000 old rows |
+|---|---|
+| Unique index added to an existing field | Works; old rows are found through the new index |
+| Field renamed in Dart, stored name kept with `@Name('title')` | All 1,000 values kept |
+| Field renamed **without** `@Name` (`note` → `comment`) | **All 1,000 values lost** (`null`), silently |
+| Field type changed (`int size` → `String? size`) | **All 1,000 values lost** (`null`), silently |
+| Field removed | No error |
+| New nullable field | `null` |
+| New non-nullable `String` (`late String status`) | Empty string `""` |
+| New `int` with a Dart default (`int priority = 3`) | **`-9223372036854775808`**, not 3: the default initialiser is not applied to old rows |
+| New list (`List<String> tags = []`) | Empty list |
+
+Old rows could be updated through the new schema, and new rows written alongside them.
+
+### Downgrade (v2 data opened by v1, then by v2 again)
+
+- The older version opened the newer database **without any error or warning**.
+- It read the fields it knows; fields it no longer has (`note`, `legacyCount`, `size` as int) came back as `""` or `-9223372036854775808`.
+- **Opening with v1 destroyed the v2-only data.** When v2 opened the file again, `description`, `status`, `priority`, `tags`, `comment` and `size` were empty on every row, including the 10 rows v2 had written and the row v2 had edited. Isar makes the stored schema match whatever schema opens it and drops the rest.
+
+### Android
+
+Seeding with v1 worked on the TECNO phone. Installing the v2 build was refused by the phone twice (`INSTALL_FAILED_VERIFICATION_FAILURE: Install not allowed`), so the upgrade was **not verified on Android**. Earlier installs on the same phone had worked; the cause was not investigated.
+
+### What the storage layer must do
+
+1. **Keep our own schema version** in the database (a small `Meta` collection) and check it before opening the real collections.
+2. **Refuse to open a database written by a newer app version.** Otherwise simply launching an old build wipes newer fields. This check has to read the version without opening the collections with the old schema, e.g. from a separate tiny Isar instance or a sidecar file.
+3. **Never rename a stored field or change its type in place.** Renames in Dart must keep the stored name with `@Name`. A real rename or type change is: add the new field, copy values in a migration step, remove the old field in a later version.
+4. **New non-nullable fields need a migration step** that writes the intended value into old rows; Dart default initialisers do not apply to them. Prefer nullable fields and treat `null` as "not set".
+5. **Back up before migrating**: copy the database file before the first open with a new schema version.
+6. **Migration tests in CI** from committed fixture databases of every released schema version.
+
 ## iOS: NOT TESTED
 
 - No iPhone was reachable (Flutter reported one known device that could not be reached over the network).

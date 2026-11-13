@@ -4,7 +4,7 @@ One file per decision, named `NNNN-short-title.md`, copied from [0000-template.m
 
 | ADR | Topic | Status | Decided by |
 |---|---|---|---|
-| 0001 | Persistence backend (Isar Community vs alternative) | Pending | Spike A |
+| [0001](0001-persistence-backend.md) | Persistence backend: Isar Community on native, in-memory on web | Accepted 2026-11-13; iOS, Windows, Linux and release builds unverified | Spike A |
 | 0002 | Flow canvas approach (custom vs package) | Pending | Spike B |
 | 0003 | HTTP adapters and Web Lite capability matrix | Pending | Spike C |
 | 0004 | Expression language grammar | Pending | Design |

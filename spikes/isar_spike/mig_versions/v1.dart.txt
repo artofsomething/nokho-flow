@@ -1,0 +1,57 @@
+// Schema VERSION 1 of the migration spike. Copied to lib/mig_record.dart by
+// mig_versions/use.sh; do not edit lib/mig_record.dart directly.
+import 'package:isar_community/isar.dart';
+
+part 'mig_record.g.dart';
+
+const migVersion = 1;
+
+@collection
+class MigRecord {
+  Id id = Isar.autoIncrement;
+
+  late String uuid; // v2 adds a unique index
+  late String title; // v2 renames to `name`, keeping the stored name
+  late String note; // v2 renames to `comment` WITHOUT keeping the stored name
+  late int legacyCount; // v2 removes this
+  late int size; // v2 changes the type to String
+}
+
+Future<List<String>> runMigStep(Isar isar) async {
+  final out = <String>[];
+  final c = isar.migRecords;
+  final count = await c.count();
+  if (count == 0) {
+    await isar.writeTxn(
+      () => c.putAll([
+        for (var i = 1; i <= 1000; i++)
+          MigRecord()
+            ..uuid = 'mig-$i'
+            ..title = 'Title $i'
+            ..note = 'Note $i'
+            ..legacyCount = i * 2
+            ..size = i * 100,
+      ]),
+    );
+    out.add('v1 SEEDED rows=${await c.count()}');
+    return out;
+  }
+
+  // Reached only when an older app version opens a database that a newer
+  // version already migrated: the downgrade case.
+  out.add('v1 REOPENED (downgrade) rows=$count');
+  final r1 = (await c.get(1))!;
+  out.add(
+    'v1 old row 1: uuid=${r1.uuid} title=${r1.title} note="${r1.note}" '
+    'legacyCount=${r1.legacyCount} size=${r1.size}',
+  );
+  final r1001 = await c.get(1001);
+  out.add(
+    r1001 == null
+        ? 'v1 row 1001 (written by v2): missing'
+        : 'v1 row 1001 (written by v2): uuid=${r1001.uuid} '
+              'title=${r1001.title} note="${r1001.note}" '
+              'legacyCount=${r1001.legacyCount} size=${r1001.size}',
+  );
+  return out;
+}

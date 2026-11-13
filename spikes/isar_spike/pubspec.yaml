@@ -9,11 +9,16 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  isar_community: ^3.4.1
+  isar_community_flutter_libs: ^3.4.1
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  isar_community_generator: ^3.4.1
+  build_runner: ^2.15.1
 
 flutter:
   uses-material-design: true

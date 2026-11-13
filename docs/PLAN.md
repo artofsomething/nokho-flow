@@ -348,8 +348,9 @@ Design notes:
 - **Soft refs by UUID**, not Isar IDs, for portable export/import and future sync.
 - Every entity: `uuid`, `createdAt`, `updatedAt`, `deletedAt?`, `rev` (for future sync/conflict resolution).
 - Graph stored **normalized** (nodes + edges) for efficient partial updates; exportable as a single JSON document.
-- Large bodies out of main collections; cap & auto-prune history (count + total size + age).
-- Schema versioning + migration runner from day 1 (Isar has no automatic migrations beyond field add; plan explicit migration steps).
+- Large bodies out of main collections, chunked (≤ 1 MB per chunk) or file-backed; cap & auto-prune history (count + total size + age). **Mandatory:** Isar silently truncates any single object of 16 MB or more, so the repository enforces a hard per-object size limit (ADR 0001).
+- Schema versioning + migration runner from day 1. Our own schema version is stored outside the main collections and checked before opening them; a database from a newer app version is refused, because an older schema erases newer fields on open (ADR 0001).
+- Schema change rules (ADR 0001): no in-place rename or type change of a stored field (`@Name` for Dart renames; add-copy-remove otherwise); new fields nullable or filled by a migration step; back up the file before migrating.
 
 ### 3.4.1 Storage per platform (decided 2026-11-13)
 
@@ -591,7 +592,8 @@ The browser sends requests directly with `fetch`, so only **CORS-enabled APIs** 
 - CLI/headless: same runtime and limits; scripts must not depend on UI prompts.
 
 ### 5.6 Persistence & data integrity
-- Isar schema migrations: adding/removing/renaming fields, index changes, downgrade (open DB from newer app version → refuse with message, don't corrupt).
+- Isar schema migrations (measured in Spike A): a rename without `@Name` or a type change silently loses the old values; Dart default initialisers are not applied to old rows (a new `int` reads as the minimum int64); an older app version opens a newer database without error and erases the fields it does not know → refuse to open, with a message, based on our own stored schema version.
+- A single record growing past 16 MB (response body, large request body, run step with embedded data, a huge variable value) is truncated without error → size check on every write, chunk or file-back anything unbounded.
 - Corrupt DB / crash during write → transactional writes; auto-backup snapshots (daily, keep N); "recover from backup" UI.
 - Disk full; DB growth from history/blobs → size meter, auto-prune, "clear history" with confirmation.
 - Concurrent access from multiple desktop windows/isolates → single-writer discipline; Isar handles multi-isolate but design repository to avoid races; CLI reading the same DB while app is open.
@@ -652,7 +654,7 @@ The browser sends requests directly with `fetch`, so only **CORS-enabled APIs** 
 ### Phase 0 — Foundations & Spikes (2–3 weeks)
 Goal: kill the biggest risks before building features.
 - [ ] Repo, melos workspace, CI (analyze, test, build matrix), flavors (dev/prod), lints.
-- [ ] **Spike A — Isar Community on native platforms.** macOS passed; web failed to compile, which led to the §3.4.1 decision. Remaining: Android, iOS, isolates + large blob, schema change, ADR 0001. Results in `docs/spikes/a-persistence-results.md`.
+- [x] **Spike A — Isar Community on native platforms.** Done 2026-11-13 → [ADR 0001](adr/0001-persistence-backend.md): Isar on native with storage-layer rules, in-memory on web. Still unverified: iOS, Windows, Linux, release-mode builds. Results in `docs/spikes/a-persistence-results.md`.
 - [ ] **Spike B — Canvas:** prototype node graph with 200 nodes (pan/zoom/drag/connect) on desktop + phone; choose custom vs package.
 - [ ] **Spike C — HTTP adapters:** native full-control vs web `fetch` restrictions; define the `capabilities` matrix and CORS/mixed-content error detection for Web Lite.
 - [ ] **Spike D — JSON editor/viewer perf** with 10–50 MB payloads.

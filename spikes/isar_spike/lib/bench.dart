@@ -20,7 +20,7 @@ class BenchLine {
   String toString() => '${ok ? 'PASS' : 'FAIL'} | $label | ${ms}ms | $detail';
 }
 
-RequestRecord _record(int i, DateTime now) => RequestRecord()
+RequestRecord makeRecord(int i, DateTime now) => RequestRecord()
   ..uuid = 'req-$i'
   ..collectionUuid = 'col-${i % collectionCount}'
   ..name = 'Request $i'
@@ -71,7 +71,7 @@ Future<List<BenchLine>> runBench(Isar isar) async {
       });
 
   final now = DateTime.utc(2026, 1, 1);
-  final batch = [for (var i = 0; i < recordCount; i++) _record(i, now)];
+  final batch = [for (var i = 0; i < recordCount; i++) makeRecord(i, now)];
 
   await measure('write $recordCount in one transaction', () async {
     await isar.writeTxn(() => records.putAll(batch));
@@ -130,7 +130,7 @@ Future<List<BenchLine>> runBench(Isar isar) async {
   });
 
   await measure('duplicate uuid rejected', () async {
-    final dup = _record(5, now);
+    final dup = makeRecord(5, now);
     try {
       await isar.writeTxn(() => records.put(dup));
       return ('no error thrown', false);

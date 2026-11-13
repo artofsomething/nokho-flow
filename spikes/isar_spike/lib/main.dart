@@ -4,13 +4,11 @@ import 'package:isar_community/isar.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'bench.dart';
-import 'request_record.dart';
+import 'isolate_blob_test.dart';
 
-Future<Isar> openSpikeDb() async {
-  // Isar ignores the directory on web, where it uses IndexedDB.
-  final dir = kIsWeb ? '' : (await getApplicationSupportDirectory()).path;
-  return Isar.open([RequestRecordSchema], directory: dir, name: 'spike');
-}
+/// Which spike test to run: `bench` (default) or `isolate`.
+/// Pass with `--dart-define=SPIKE_TEST=isolate`.
+const spikeTest = String.fromEnvironment('SPIKE_TEST', defaultValue: 'bench');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,9 +41,14 @@ class _MainAppState extends State<MainApp> {
 
     try {
       final mode = kReleaseMode ? 'release' : 'debug';
-      log('platform=${kIsWeb ? 'web' : defaultTargetPlatform.name} mode=$mode');
-      final isar = await openSpikeDb();
-      for (final line in await runBench(isar)) {
+      log('platform=${defaultTargetPlatform.name} mode=$mode test=$spikeTest');
+      final dir = (await getApplicationSupportDirectory()).path;
+      final isar = await Isar.open(schemas, directory: dir, name: dbName);
+      final lines = switch (spikeTest) {
+        'isolate' => await runIsolateBlobTest(isar, dir),
+        _ => await runBench(isar),
+      };
+      for (final line in lines) {
         log(line.toString());
       }
       log('DONE');

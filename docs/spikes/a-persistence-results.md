@@ -81,6 +81,30 @@ Notes:
 - On the phone a single lookup by `uuid` costs about 1.1 ms and a single save about 7 ms. Resolving many shared-request references one at a time (e.g. a 200-node flow) should use one batched query, not a loop of lookups.
 - The emulator is 3–6× slower than the real phone on bulk work; do not tune against emulator numbers.
 
+## Background isolate and 20 MB blob (2026-11-13)
+
+Test code: `spikes/isar_spike/lib/isolate_blob_test.dart`, run with `--dart-define=SPIKE_TEST=isolate`. Debug mode, one run each. "Max UI gap" is the longest stall of a 4 ms timer on the UI isolate while the operation ran.
+
+| Check | macOS | TECNO CN7c (Android 16) |
+|---|---|---|
+| Background isolate opens the same database and writes 10,000 records | PASS, 94 ms write, max UI gap 33 ms | PASS, 533 ms write, max UI gap 336 ms |
+| UI isolate sees those writes (count and watcher) | PASS, 1 watch event | PASS, 1 watch event |
+| 20 MB stored as **one** object | **Silently truncated**: 4,194,304 bytes came back, no error | **Silently truncated**: same |
+| 20 MB stored as 20 × 1 MB chunks | PASS, intact; write 68 ms, read 45 ms, max UI gap 6 ms | PASS, intact; write 146 ms, read 97 ms, max UI gap 12 ms |
+| UI isolate reads the 20 MB back (async API) | 12 ms, max UI gap 12 ms | 53 ms, max UI gap 51 ms |
+| UI isolate writes 10,000 records (async API) | 59 ms, max UI gap 16 ms | 122 ms, max UI gap 47 ms |
+| Database size afterwards | 42.8 MB | 42.5 MB |
+
+Findings:
+
+1. **Multi-isolate access works.** A second isolate opens the database by directory and name, and its writes reach the UI isolate's watchers. An open `Isar` instance cannot be sent to another isolate ("object is unsendable"); each isolate must open its own, and closures passed to `Isolate.run` must not capture it.
+2. **Objects of 16 MB or more are silently corrupted.** Storing a 20 MB byte list in one object raised no error and returned 4,194,304 bytes, which is 20 MiB modulo 16 MiB, so the length appears to wrap at 16 MiB. This is the most important result of the spike: any single record that can exceed 16 MB (a response body, a big request body, a run step with an embedded response) would lose data without warning.
+   - Rule for the storage layer: never put unbounded data in one object. Chunk blobs (1 MB chunks worked) or keep large bodies in files with only a reference in Isar, and enforce a hard per-object size limit in the repository so an oversize write fails loudly.
+   - The limit also applies to text fields and embedded lists, not only byte lists; that was not separately tested.
+3. **UI stalls.** Reading 20 MB back on the UI isolate stalled it for about 50 ms on the phone (the bytes are copied into Dart on the calling isolate). Large bodies should be read in a background isolate or streamed chunk by chunk.
+4. The 336 ms gap on the phone during the first isolate write is unexplained. It was the first operation after launch, in a debug build, so start-up work may be included. Not investigated.
+5. The database file grew to about 42 MB for 20 MB of live blob data (the truncated 4 MB object and freed pages are included). Deleting blobs will not shrink the file by itself; compaction behaviour was not tested.
+
 ## iOS: NOT TESTED
 
 - No iPhone was reachable (Flutter reported one known device that could not be reached over the network).

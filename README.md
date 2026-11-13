@@ -34,3 +34,19 @@ flutter analyze
 (cd apps/nokho_flow && flutter run -d macos)
 dart run tools/nokho_cli/bin/nokho.dart --version
 ```
+
+## Running on web
+
+Debug with hot reload (Flutter opens its own Chrome window):
+
+```bash
+(cd apps/nokho_flow && flutter run -d chrome)
+```
+
+Serve on a fixed port for any browser, release mode:
+
+```bash
+(cd apps/nokho_flow && flutter run --release -d web-server --web-hostname localhost --web-port 8123)
+```
+
+With Flutter 3.44.6, `-d web-server` in **debug** mode shows a blank page: the injected debug client fails to decode a message and never starts the app. Use `-d chrome` for debugging, or `--release` with `web-server`. `.claude/launch.json` uses the release command for that reason.

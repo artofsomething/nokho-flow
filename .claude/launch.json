@@ -9,6 +9,15 @@
         "cd apps/nokho_flow && flutter run --release -d web-server --web-hostname localhost --web-port 8123"
       ],
       "port": 8123
+    },
+    {
+      "name": "canvas-spike-web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd spikes/canvas_spike && flutter run --release -d web-server --web-hostname localhost --web-port 8124"
+      ],
+      "port": 8124
     }
   ]
 }

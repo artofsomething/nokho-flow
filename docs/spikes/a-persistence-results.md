@@ -58,6 +58,35 @@ Five such errors: the generated schema, index and embedded-object IDs are 64-bit
 
 **Decision (2026-11-13): option 3.** Keep Isar Community for native. Web Lite starts with in-memory repositories and import/export only; saved storage on web is deferred. Recorded in PLAN.md §3.4.1 and §4.1. A Drift comparison was considered and not run.
 
+## Android (2026-11-13): PASS on a physical phone and on an emulator
+
+Same benchmark, debug mode, no code changes. All checks passed on both.
+
+| Operation | TECNO CN7c (physical, Android 16 / API 36, MediaTek MT6878, arm64) | Pixel 9 Pro emulator (API 35, arm64-v8a) | macOS (for reference) |
+|---|---|---|---|
+| Write 10,000 in one transaction | 388 ms | 2,240 ms | 66 ms |
+| Read all 10,000 | 98 ms | 313 ms | 37–39 ms |
+| Indexed query (1,000 rows) | 18 ms | 54 ms | 2–3 ms |
+| Unique-index lookup × 1,000 | 1,108 ms | 3,430 ms | 146–156 ms |
+| Unindexed filter, count | 17 ms | 51 ms | 3–4 ms |
+| Sorted page (latest 50) | 10 ms | 15 ms | 2 ms |
+| 100 single-record transactions | 683 ms | 1,038 ms | 490–497 ms |
+| Duplicate `uuid` rejected | 9 ms | 11 ms | 2 ms |
+| Delete one collection (1,000 rows) | 29 ms | 34 ms | 11 ms |
+| Watchers (collection / query events) | 102 / 12 | 102 / 12 | 102 / 12 |
+| Database size | 2.5 MB | 2.4 MB | 2.4 MB |
+
+Notes:
+- One run per device, debug (JIT) builds; treat the numbers as rough upper bounds, not benchmarks.
+- On the phone a single lookup by `uuid` costs about 1.1 ms and a single save about 7 ms. Resolving many shared-request references one at a time (e.g. a 200-node flow) should use one batched query, not a loop of lookups.
+- The emulator is 3–6× slower than the real phone on bulk work; do not tune against emulator numbers.
+
+## iOS: NOT TESTED
+
+- No iPhone was reachable (Flutter reported one known device that could not be reached over the network).
+- The iOS simulator was skipped by decision. One earlier attempt, `flutter build ios --simulator --debug`, failed at "Failed to copy Flutter framework" before any Isar code ran. That is consistent with the two-architecture `lipo` problem described below, but this was not confirmed.
+- Isar on iOS therefore remains unverified.
+
 ## Open issue — macOS release/profile builds fail (not caused by Isar)
 
 Diagnosed 2026-11-13: Flutter 3.44.6 runs `lipo <file> -verify_arch arm64 x86_64`; the `lipo` in Xcode 27.2 rejects two architectures in one call ("requires exactly one input file") although each passes alone. Flutter 3.47.9 and 3.50.0 verify one architecture at a time. Fix: upgrade the Flutter SDK (deferred by decision on 2026-11-13).
